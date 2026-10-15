@@ -1,0 +1,8 @@
+{
+  // Static Siddur PWA served by Cloudflare Workers static assets (no Worker script).
+  "name": "siddur-kavanat-halev",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./public"
+  }
+}
