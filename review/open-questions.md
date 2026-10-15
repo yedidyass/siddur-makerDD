@@ -15,6 +15,17 @@ problem here. Resolve with the user before presenting the publication as final.
    This Siddur is Sephardi / Edot HaMizrach (Shulchan Aruch). Confirm Israel vs
    outside Israel; calendar rules (e.g. Tachanun days, Hallel, Ledavid in Elul,
    Birkat Hashanim wording) must be re-checked for Sephardi practice.
-4. **Optional pre-prayer sections.** Should תקון חצות (43–58), פתיחת אליהו (59–68),
-   ציצית/תפילין (71–77) appear in the daily Shacharit sequence, or only as
-   separate entry points?
+4. **Optional pre-prayer sections.** תקון חצות (43–58) and פתיחת אליהו (59–68)
+   are currently left out of Shacharit. Adon Olam, tzitzit, tefillin and
+   תפילת חנה (69–77) are included. Should either excluded section be added,
+   in the sequence or as a separate entry?
+5. **Shacharit is incomplete on special days.** Hallel, Musaf, Hoshanot,
+   ברכי נפשי for Rosh Chodesh and the Tisha BeAv order are printed later in the
+   Siddur. On those days the home screen lists what is missing; the reader shows
+   the weekday order without them.
+6. **End of Shacharit.** The scan stops on page 250, before קדיש על ישראל,
+   עלינו and the closing passages. The reader ends at תנא דבי אליהו.
+7. **Calendar customs to confirm.** Israel is assumed (rain request from
+   7 Cheshvan; Purim on 14 Adar unless Jerusalem). The Tachanun days follow the
+   list printed on page 196. Sephardi additions not printed in this part of the
+   source (e.g. Elul Selichot) are not handled.

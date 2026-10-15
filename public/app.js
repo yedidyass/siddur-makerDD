@@ -1,14 +1,15 @@
 import {planForPrayer,hebrewAt,sunset,TZ} from './calendar.js';
 import {composePrayerTree,flattenBlocks,blockIndex,guidance} from './prayer-blocks.js';
-import {BookReader} from './book-reader.js?v=39';
+import {BookReader} from './book-reader.js?v=40';
 
 const options={latitude:31.95,longitude:34.89,jerusalem:false};
 const home=document.querySelector('#home'),reader=document.querySelector('#reader'),book=document.querySelector('#book');
 let plans={},prayers={},prayerTrees={},currentPrayer='shacharit',blocks=[],index=0;
 const bookReader=new BookReader(book,{pageUrl:id=>pageUrl(id),onChange:next=>{index=next;const block=blocks[index];if(block)localStorage.setItem(storageKey(currentPrayer),block.id);}});
-const storageKey=prayer=>`siddur:${prayer}:block-v9`;
-const pageUrl=id=>id.includes('-')?`/pages/page-${id}.jpg`:`/pages/page-${id.padStart(3,'0')}.jpg`;
-const prayerNames={shacharit:'שחרית',mincha:'מנחה',maariv:'ערבית',birkat:'ברכת המזון'};
+const storageKey=prayer=>`siddur:${prayer}:block-v10`;
+const pageUrl=id=>`/pages/page-${id.padStart(3,'0')}.png`;
+// The current source contains Shacharit only (review/source-audit.md).
+const prayerNames={shacharit:'שחרית'};
 function calendarSignature(date) {
   const h=hebrewAt(date,options);
   return `${h.year}:${h.month}:${h.day}:${date>=sunset(date,options.latitude,options.longitude)}`;
@@ -18,24 +19,24 @@ function refreshCalendar() {
   const now=new Date();
   signature=calendarSignature(now);
   for(const prayer of Object.keys(prayerNames)) {
-    const service=prayer==='birkat'?(now>=sunset(now,options.latitude,options.longitude)?'maariv':'shacharit'):prayer;
-    plans[prayer]=planForPrayer(now,service,options);
+    plans[prayer]=planForPrayer(now,prayer,options);
     prayerTrees[prayer]=composePrayerTree(prayer,plans[prayer]);
     prayers[prayer]=flattenBlocks(prayerTrees[prayer]);
   }
-  const today=plans[now>=sunset(now,options.latitude,options.longitude)?'maariv':'shacharit'];
+  // After sunset the home screen describes the coming day; its next prayer is Shacharit.
+  const today=now>=sunset(now,options.latitude,options.longitude)?planForPrayer(now,'maariv',options):plans.shacharit;
   document.querySelector('#hebrew-date').textContent=today.dateText;
   const occasion=document.querySelector('#occasion');
   occasion.textContent=today.title;occasion.hidden=!today.title;
-  const items=guidance(today,today.service);
+  const items=guidance({...today,service:'shacharit'},'shacharit');
   document.querySelector('#today-guidance').replaceChildren(...items.map(value=>{
     const span=document.createElement('span');span.textContent=value;return span;
   }));
   for(const [prayer,plan] of Object.entries(plans)) {
     document.querySelectorAll(`[data-card="${prayer}"] [data-tachanun]`).forEach(button=>button.hidden=plan.noTachanun||plan.unavailable);
     document.querySelectorAll(`[data-card="${prayer}"] [data-weekday-only]`).forEach(button=>button.hidden=!plan.longTachanun||plan.unavailable);
-    document.querySelectorAll(`[data-card="${prayer}"] [data-hallel]`).forEach(button=>{button.hidden=plan.hallel==='none'||plan.unavailable;button.textContent=plan.hallel==='half'?'חצי הלל':'הלל שלם';});
-    document.querySelectorAll(`[data-card="${prayer}"] [data-musaf]`).forEach(button=>{button.hidden=!plan.musaf||plan.unavailable;button.dataset.start=plan.musaf==='festival'?'extra-257':'extra-246';});
+    document.querySelectorAll(`[data-card="${prayer}"] [data-ten-days]`).forEach(button=>button.hidden=!plan.avinuMalkenu||plan.unavailable);
+    document.querySelectorAll(`[data-card="${prayer}"] [data-torah]`).forEach(button=>button.hidden=!plan.torahReading||plan.unavailable);
     const status=document.querySelector(`[data-card="${prayer}"] [data-service-guidance]`);
     if(status)status.textContent=plan.unavailable?'סדר יום חול אינו מתאים ליום הזה':guidance(plan,prayer).join(' · ');
   }
@@ -46,12 +47,8 @@ function openPrayer(prayer,startPage){
   if(!blocks.length){document.querySelector(`[data-card="${prayer}"] [data-service-guidance]`)?.scrollIntoView({behavior:'smooth'});return;}
   const savedPage=localStorage.getItem(storageKey(prayer));
   const requested=startPage||savedPage;
-  const sectionAnchors={'71':'ashrei-uva','77':'song-of-day','81':'ledavid'};
-  let target=requested?blockIndex(prayerTrees[prayer],requested):0;
-  if(target<0&&prayer==='shacharit'&&sectionAnchors[requested])target=blockIndex(prayerTrees[prayer],sectionAnchors[requested]);
-  if(target<0&&requested==='71')target=blockIndex(prayerTrees[prayer],'weekday-ashrei-uva');
-  if(target<0&&requested==='77')target=blockIndex(prayerTrees[prayer],'weekday-psalms');
-  if(target<0&&requested==='81')target=blocks.findIndex(block=>block.id.includes('81-'));
+  // Anchors are source page IDs or semantic group IDs; both resolve in today's tree.
+  const target=requested?blockIndex(prayerTrees[prayer],requested):0;
   index=Math.max(0,target);
   if(reader.hidden)history.pushState({siddurReader:true},'',location.href);
   home.hidden=true;reader.hidden=false;bookReader.open(blocks,index);
@@ -80,8 +77,7 @@ document.addEventListener('keydown',event=>{
 });
 function orderMenu(){
   const hour=Number(new Intl.DateTimeFormat('en-GB',{timeZone:TZ,hour:'2-digit',hourCycle:'h23'}).format(new Date()));
-  const order=hour<12?['shacharit','mincha','maariv']:hour<19?['mincha','maariv','shacharit']:['maariv','shacharit','mincha'];
-  order.push('birkat');
+  const order=(hour<12?['shacharit','mincha','maariv']:hour<19?['mincha','maariv','shacharit']:['maariv','shacharit','mincha']).filter(name=>name in prayerNames);
   const list=document.querySelector('#prayer-list');
   order.forEach(name=>list.append(document.querySelector(`[data-card="${name}"]`)));
   document.querySelectorAll('[data-card]').forEach(card=>card.classList.toggle('suggested',card.dataset.card===order[0]));
@@ -94,7 +90,7 @@ async function enableOffline(){
   if(!('serviceWorker'in navigator)){status.textContent='הדפדפן אינו תומך בשימוש ללא אינטרנט';return;}
   try{
     await navigator.serviceWorker.register('/sw.js');await navigator.serviceWorker.ready;
-    const ready=await caches.has('siddur-animations-v39');
+    const ready=await caches.has('siddur-kavanat-halev-v1');
     status.textContent=ready?'✓ מוכן לשימוש ללא אינטרנט':'מכין את הסידור לשימוש ללא אינטרנט…';
     status.classList.toggle('ready',ready);
   }catch{status.textContent='השמירה ללא אינטרנט נכשלה';}

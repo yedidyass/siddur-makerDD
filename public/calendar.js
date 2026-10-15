@@ -1,4 +1,4 @@
-// Israel Chabad weekday calendar. Date and service are separate inputs:
+// Israel Sephardi (עדות המזרח) weekday calendar. Date and service are separate inputs:
 // Maariv before sunset belongs to the coming Hebrew day.
 export const TZ = 'Asia/Jerusalem';
 const names = {Tishri:'תשרי',Heshvan:'חשוון',Kislev:'כסלו',Tevet:'טבת',Shevat:'שבט',Adar:'אדר','Adar I':'אדר א׳','Adar II':'אדר ב׳',Nisan:'ניסן',Iyar:'אייר',Sivan:'סיוון',Tamuz:'תמוז',Av:'אב',Elul:'אלול'};
@@ -80,45 +80,58 @@ function omerDay(h,civilDate) {
 const yomTov=h=>is(h,'Tishri',1,2,10,15,22)||is(h,'Nisan',15,21)||is(h,'Sivan',6);
 const cholSukkot=h=>h.month==='Tishri'&&h.day>=16&&h.day<=21;
 const cholPesach=h=>h.month==='Nisan'&&h.day>=16&&h.day<=20;
+// Days without Tachanun, as printed in this Siddur (סדר תחנון, page 196 note ב).
 function omitTachanun(h,chanuka,fast) {
   return h.weekday==='Sat'||yomTov(h)||h.day===1||h.day===30||chanuka||
     h.month==='Nisan'||is(h,'Iyar',14,18)||h.month==='Sivan'&&h.day<=12||
     is(h,'Av',9,15)||fast==='תשעה באב'||is(h,'Elul',29)||h.month==='Tishri'&&h.day>=9||
-    is(h,'Shevat',15)||is(h,'Adar I',14,15)||yearMonth(h)&&[14,15].includes(h.day)||
-    is(h,'Kislev',10,19,20)||is(h,'Tamuz',12,13);
+    is(h,'Shevat',15)||is(h,'Adar I',14,15)||yearMonth(h)&&[14,15].includes(h.day);
 }
-function erevOmission(h,next,fast) {
-  if(h.weekday==='Fri'||next.day===1||next.day===30)return true;
-  if(['Kislev:10','Kislev:19','Kislev:25','Shevat:15','Adar I:14','Iyar:18','Tamuz:12','Av:9','Av:15'].includes(key(next)))return true;
-  if(yearMonth(next)&&next.day===14)return true;
-  if(next.month==='Sivan'&&next.day===1)return true;
-  if(fast==='תענית אסתר'&&yearMonth(next)&&next.day===14)return true;
-  return false;
+// Page 196 note ג: Mincha before a day without Tachanun also omits it, except
+// before Erev Rosh Hashana, Erev Yom Kippur and Pesach Sheni.
+function erevOmission(h,next,civilDate) {
+  if(h.weekday==='Fri')return true;
+  if(['Elul:29','Tishri:9','Iyar:14'].includes(key(next)))return false;
+  const tomorrow=shifted(civilDate,1);
+  return omitTachanun(next,chanukah(next,tomorrow),fastDay(next,tomorrow));
+}
+// The additional psalm said after the Song of the Day (pages 239-243).
+function extraPsalm(h,chanuka,fast,purimDay) {
+  if(is(h,'Tishri',11))return 'afterYomKippur';
+  if(fast==='צום גדליה'||fast==='עשרה בטבת')return 'gedaliaTevet';
+  if(chanuka)return 'chanukah';
+  if(fast==='תענית אסתר'||purimDay)return 'esther';
+  if(fast==='שבעה עשר בתמוז')return 'tamuz';
+  return null;
 }
 export function rulesForHebrewDate(h,civilDate,service='shacharit',options={}) {
   const next=hebrew(shifted(civilDate,1)), chanuka=chanukah(h,civilDate), fast=fastDay(h,civilDate);
   const roshChodesh=h.day===1||h.day===30, sukkot=cholSukkot(h), pesach=cholPesach(h);
   const purimDay=yearMonth(h)&&h.day===(options.jerusalem?15:14);
-  const noTachanun=omitTachanun(h,chanuka,fast)||(service==='mincha'&&erevOmission(h,next,fast));
+  const noTachanun=omitTachanun(h,chanuka,fast)||(service==='mincha'&&erevOmission(h,next,civilDate));
   const hallel=chanuka||sukkot?'full':roshChodesh||pesach?'half':'none';
   const yaalehVeyavo=roshChodesh||sukkot||pesach;
   const alHanissim=chanuka?'chanukah':purimDay?'purim':null;
-  const ledavid=h.month==='Elul'||is(h,'Av',30)&&is(next,'Elul',1)||h.month==='Tishri'&&h.day<=21;
   const omer=omerDay(h,civilDate);
   const unavailable=h.weekday==='Sat'||yomTov(h);
   const tenDays=h.month==='Tishri'&&h.day>=3&&h.day<=9;
+  const mondayThursday=['Mon','Thu'].includes(h.weekday);
+  const torahReading=mondayThursday||roshChodesh||chanuka||purimDay||Boolean(fast)||sukkot||pesach;
   let title=fast||'';
   if(sukkot)title=h.day===21?'הושענא רבה':'חול המועד סוכות';
   else if(pesach)title='חול המועד פסח';
   else if(chanuka)title=roshChodesh?'חנוכה · ראש חודש':'חנוכה';
   else if(purimDay)title='פורים';
   else if(roshChodesh)title='ראש חודש';
-  else if(is(h,'Kislev',10,19,20))title='יום חב״די';
+  else if(tenDays&&!fast)title='עשרת ימי תשובה';
   else if(is(h,'Iyar',14,18)||is(h,'Shevat',15)||is(h,'Av',15))title='יום שאין בו תחנון';
   if(unavailable)title=h.weekday==='Sat'?'שבת':'יום טוב';
   return {h,service,title,unavailable,roshChodesh,chanukah:chanuka,sukkot,pesach,purimDay,fast,tenDays,
-    noTachanun,hallel,yaalehVeyavo,alHanissim,ledavid,omer,
-    longTachanun:!noTachanun&&['Mon','Thu'].includes(h.weekday),
+    noTachanun,hallel,yaalehVeyavo,alHanissim,omer,torahReading,
+    longTachanun:!noTachanun&&mondayThursday,
+    avinuMalkenu:tenDays,
+    extraPsalm:extraPsalm(h,chanuka,fast,purimDay),
+    tishaBav:fast==='תשעה באב',
     musaf:roshChodesh?'roshChodesh':sukkot||pesach?'festival':null,
     hoshanot:sukkot,season:h.month==='Tishri'&&h.day<22||h.month==='Nisan'&&h.day>=15||
       ['Iyar','Sivan','Tamuz','Av','Elul'].includes(h.month)?'tal':'geshem',
