@@ -1,28 +1,39 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
+import {readFileSync,readdirSync} from 'node:fs';
 import {page,group,ref,when,choose,resolveBlocks,flattenBlocks,blockIndex} from '../public/block-engine.js';
-import {blockCatalog} from '../public/block-catalog.js';
+import {blockCatalog,sourcePages} from '../public/block-catalog.js';
 import {prayerRecipes} from '../public/prayer-recipes.js';
 import {composePrayerTree,composePrayer} from '../public/prayer-blocks.js';
 import {planForPrayer} from '../public/calendar.js';
 const at=(date,service='shacharit')=>planForPrayer(new Date(date),service);
+const ids=date=>composePrayer('shacharit',at(date)).map(block=>block.id);
+const follows=(list,a,b)=>list[list.indexOf(a)+1]===b;
+// Reference weekdays in Cheshvan 5787 (Tachanun is said, no special additions).
+const MON='2026-10-19T07:00:00Z',TUE='2026-10-20T07:00:00Z',WED='2026-10-21T07:00:00Z',
+  THU='2026-10-22T07:00:00Z',FRI='2026-10-23T07:00:00Z',SUN='2026-10-25T07:00:00Z';
+function* weekdaysOfYear() {
+  for(let day=0;day<400;day++){
+    const plan=planForPrayer(new Date(Date.UTC(2026,8,1+day,7)),'shacharit');
+    if(!plan.unavailable)yield plan;
+  }
+}
+
 test('resolved Shacharit retains primitive, group, and nested group levels',()=>{
-  const tree=composePrayerTree('shacharit',at('2026-10-02T09:00:00Z'));
-  const opening=tree.children.find(node=>node.id==='morning-opening');
+  const tree=composePrayerTree('shacharit',at(TUE));
+  const opening=tree.children.find(node=>node.id==='shacharit-opening');
   assert.equal(opening.type,'group');
-  assert.equal(opening.children[0].id,'morning-blessings');
+  assert.equal(opening.children[0].id,'akeda');
   assert.equal(opening.children[0].children[0].type,'image');
-  const amidah=opening.children.find(node=>node.id==='morning-amidah');
-  assert.equal(amidah.children.at(-1).id,'61');
-  const ending=tree.children.find(node=>node.id==='musaf-morning-ending');
-  assert.ok(ending.children.some(node=>node.id==='musaf'));
-  assert.ok(ending.children.find(node=>node.id==='musaf').children.some(node=>node.id==='musaf-festival'));
+  const amidah=opening.children.find(node=>node.id==='amidah');
+  assert.equal(amidah.children.at(-1).id,'193');
+  const ending=tree.children.find(node=>node.id==='shacharit-ending');
+  assert.ok(ending.children.some(node=>node.id==='song-of-day'));
 });
 test('serialized catalogs and recipes resolve without executable catalog functions',()=>{
-  const plan=at('2026-10-02T09:00:00Z');
+  const plan=at(MON);
   const catalog=JSON.parse(JSON.stringify(blockCatalog)),recipe=JSON.parse(JSON.stringify(prayerRecipes.shacharit));
-  assert.deepEqual(resolveBlocks(recipe,catalog,{...plan,hoshanotDay:7}),composePrayerTree('shacharit',plan));
+  assert.deepEqual(resolveBlocks(recipe,catalog,plan),composePrayerTree('shacharit',plan));
 });
 test('a shared group can be nested and reused without mutation',()=>{
   const catalog={shared:group('shared','shared',[page('6')])};
@@ -60,94 +71,96 @@ test('conditions resolve at any nesting level and empty groups disappear',()=>{
   assert.deepEqual(flattenBlocks(resolveBlocks(recipe,{},{})).map(node=>node.id),['8']);
   assert.deepEqual(flattenBlocks(resolveBlocks(recipe,{},{enabled:true,variant:'first'})).map(node=>node.id),['6','7']);
 });
-test('section anchors resolve to correct reader positions after conditional insertions',()=>{
-  const tree=composePrayerTree('shacharit',at('2026-10-02T09:00:00Z'));
-  const pages=flattenBlocks(tree);
-  assert.equal(pages[blockIndex(tree,'song-of-day')].id,'79');
-  assert.equal(pages[blockIndex(tree,'ashrei-uva')].id,'71');
-  assert.equal(pages[blockIndex(tree,'ledavid')].id,'81');
-  assert.equal(blockIndex(tree,'absent'),-1);
-});
-test('daily trees resolve for every service across a full year with independent results',()=>{
-  for(let day=0;day<400;day++)for(const service of Object.keys(prayerRecipes)){
-    const date=new Date(Date.UTC(2026,8,1+day,9));
-    const plan=planForPrayer(date,service==='birkat'?'shacharit':service);
-    const tree=composePrayerTree(service,plan);
-    assert.deepEqual(flattenBlocks(tree),composePrayer(service,plan));
-    function check(node){
-      assert.ok(['group','image'].includes(node.type),node.type);
-      if(node.type==='group')node.children.forEach(check);
-    }
-    check(tree);
-    assert.equal(plan.unavailable,tree.children.length===0);
+test('every weekday of the year follows the printed order without repeating a page',()=>{
+  for(const plan of weekdaysOfYear()){
+    const tree=composePrayerTree('shacharit',plan);
+    const pages=flattenBlocks(tree).map(block=>Number(block.id));
+    assert.deepEqual(flattenBlocks(tree),composePrayer('shacharit',plan));
+    for(let i=1;i<pages.length;i++)assert.ok(pages[i]>pages[i-1],`${plan.dateText}: ${pages[i-1]} -> ${pages[i]}`);
+    for(const block of flattenBlocks(tree))assert.equal(block.type,'image');
   }
 });
-test('new engine modules are included in the offline shell',()=>{
+test('every displayed page is a published full-page asset that is cached offline',()=>{
+  const files=new Set(readdirSync(new URL('../public/pages/',import.meta.url)));
+  const sw=readFileSync(new URL('../public/sw.js',import.meta.url),'utf8');
+  assert.ok(sw.includes('...range(29, 42), ...range(69, 250)'));
+  const expected=[];for(let n=29;n<=42;n++)expected.push(String(n));for(let n=69;n<=250;n++)expected.push(String(n));
+  assert.deepEqual(sourcePages,expected);
+  for(const id of sourcePages)assert.ok(files.has(`page-${id.padStart(3,'0')}.png`),id);
+  assert.equal([...files].filter(name=>name.endsWith('.png')).length,sourcePages.length);
+  for(const plan of weekdaysOfYear())for(const block of composePrayer('shacharit',plan))assert.ok(sourcePages.includes(block.id));
+});
+test('engine modules and versioned assets are included in the offline shell',()=>{
   const sw=readFileSync(new URL('../public/sw.js',import.meta.url),'utf8');
   for(const module of ['block-engine','block-catalog','prayer-recipes'])assert.ok(sw.includes(`'/${module}.js'`));
-  assert.ok(sw.includes('siddur-animations-v39'));
-  for(const asset of ["'/app.js?v=39'","'/styles.css?v=39'","'/vendor/page-flip.module.js?v=39'"])assert.ok(sw.includes(asset));
+  assert.ok(sw.includes("'siddur-kavanat-halev-v1'"));
+  for(const asset of ["'/app.js?v=40'","'/styles.css?v=40'","'/vendor/page-flip.module.js?v=40'","'/book-reader.js?v=40'"])assert.ok(sw.includes(asset));
   const app=readFileSync(new URL('../public/app.js',import.meta.url),'utf8');
-  assert.ok(app.includes("caches.has('siddur-animations-v39')"));
-  assert.ok(!app.includes("querySelector('#city')"));
-  assert.ok(!app.includes("block.type==='fragment'"));
+  assert.ok(app.includes("caches.has('siddur-kavanat-halev-v1')"));
+  assert.ok(app.includes("'./book-reader.js?v=40'"));
+  const reader=readFileSync(new URL('../public/book-reader.js',import.meta.url),'utf8');
+  assert.ok(reader.includes("'./vendor/page-flip.module.js?v=40'"));
 });
-test('weekday Song of the Day has no instruction banner and selects only today source pages',()=>{
-  const expected={
-    '2026-10-04T07:00:00Z':['76','77'],
-    '2026-10-05T07:00:00Z':['77'],
-    '2026-10-06T07:00:00Z':['77'],
-    '2026-10-07T07:00:00Z':['78'],
-    '2026-10-08T07:00:00Z':['78','79'],
-    '2026-10-09T07:00:00Z':['79']
-  };
+test('pages that complete a required section are always shown',()=>{
+  for(const plan of weekdaysOfYear()){
+    const list=composePrayer('shacharit',plan).map(block=>block.id);
+    // 193 ends the Amidah; 196 ends אבינו מלכנו and holds יהי שם; 217 holds the half Kaddish;
+    // 220 ends אשרי; 238-239 hold הושיענו; 244 holds קדיש יהא שלמא.
+    for(const id of ['29','42','69','193','196','217','218','220','226','228','229','238','239','244','250'])
+      assert.ok(list.includes(id),`${plan.dateText} missing ${id}`);
+    for(let n=69;n<=193;n++)assert.ok(list.includes(String(n)),`${plan.dateText} missing ${n}`);
+  }
+});
+test('Song of the Day selects the minimum span of complete pages for each weekday',()=>{
+  const expected={[SUN]:['230','231'],[MON]:['231','232','233'],[TUE]:['233','234'],
+    [WED]:['234','235','236'],[THU]:['236','237'],[FRI]:['237']};
   for(const [date,pages] of Object.entries(expected)){
     const tree=composePrayerTree('shacharit',at(date));
-    const group=tree.children.find(node=>node.id==='weekday-morning-ending')
-      .children.find(node=>node.id==='weekday-psalms');
-    const ids=flattenBlocks(group).map(block=>block.id);
-    assert.deepEqual(ids.slice(0,pages.length),pages);
-    assert.ok(!ids.includes('shir-shel-yom'));
+    const song=tree.children.find(node=>node.id==='shacharit-ending').children.find(node=>node.id==='song-of-day');
+    assert.deepEqual(flattenBlocks(song).map(block=>block.id),pages);
+    assert.equal(flattenBlocks(tree)[blockIndex(tree,'song-of-day')].id,pages[0]);
+  }
+  assert.ok(follows(ids(FRI),'237','238'));
+});
+test('ordinary weekday Tachanun returns to the half Kaddish on page 217',()=>{
+  const tuesday=ids(TUE);
+  assert.ok(follows(tuesday,'193','196'));assert.ok(follows(tuesday,'205','217'));
+  assert.ok(!tuesday.includes('206'));assert.ok(!tuesday.includes('215'));
+  assert.ok(follows(tuesday,'226','227'));
+});
+test('Monday and Thursday add Tachanunim and the Torah service in printed order',()=>{
+  for(const date of [MON,THU]){
+    const list=ids(date);
+    for(let n=196;n<=218;n++)assert.ok(list.includes(String(n)),`${date} ${n}`);
   }
 });
-test('Song of the Day menu anchor starts at the first page for each day',()=>{
-  const expected={Sun:'76',Mon:'77',Tue:'77',Wed:'78',Thu:'78',Fri:'79'};
-  for(let day=0;day<6;day++){
-    const date=new Date(Date.UTC(2026,9,4+day,7));
-    const plan=planForPrayer(date,'shacharit');
-    const tree=composePrayerTree('shacharit',plan);
-    const first=flattenBlocks(tree)[blockIndex(tree,'daily-song')];
-    assert.equal(first.id,expected[plan.h.weekday]);
-  }
+test('a day without Tachanun skips Tachanun and תפלה לדוד',()=>{
+  const plan=at('2026-10-06T07:00:00Z');   // 25 Tishri, Tuesday
+  assert.equal(plan.noTachanun,true);assert.equal(plan.torahReading,false);
+  const list=composePrayer('shacharit',plan).map(block=>block.id);
+  assert.ok(follows(list,'196','217'));
+  assert.ok(!list.includes('197'));assert.ok(!list.includes('227'));
+  assert.ok(follows(list,'226','228'));
 });
-test('every prayer uses only full image pages, never fragments',()=>{
-  for(let day=0;day<400;day++)for(const service of Object.keys(prayerRecipes)){
-    const date=new Date(Date.UTC(2026,8,1+day,9));
-    const plan=planForPrayer(date,service==='birkat'?'shacharit':service);
-    for(const block of composePrayer(service,plan))assert.notEqual(block.type,'fragment');
-  }
+test('a Torah reading without Tachanunim keeps the Kaddish page before the Torah service',()=>{
+  const plan=at('2026-12-07T07:00:00Z');   // Chanukah, Monday
+  assert.equal(plan.noTachanun,true);assert.equal(plan.torahReading,true);
+  const list=composePrayer('shacharit',plan).map(block=>block.id);
+  assert.deepEqual(list.slice(list.indexOf('196'),list.indexOf('218')+1),['196','214','215','216','217','218']);
 });
-test('page 61 always completes Shacharit Amidah, with or without Tachanun',()=>{
-  for(const date of ['2026-10-04T07:00:00Z','2026-11-19T09:00:00Z']){
-    const ids=composePrayer('shacharit',at(date)).map(block=>block.id);
-    assert.equal(ids[ids.indexOf('60')+1],'61');
-  }
+test('Avinu Malkenu appears only during the Ten Days of Repentance',()=>{
+  const tenDays=ids('2026-09-15T07:00:00Z');   // 4 Tishri
+  assert.deepEqual(tenDays.slice(tenDays.indexOf('193'),tenDays.indexOf('196')+1),['193','194','195','196']);
+  for(const date of [MON,TUE])assert.ok(!ids(date).includes('194'));
 });
-test('every prayer keeps complete boundary pages even when they also contain optional text',()=>{
-  const dates=['2026-10-04T07:00:00Z','2026-11-19T09:00:00Z'];
-  for(const date of dates){
-    const shacharit=composePrayer('shacharit',at(date)).map(block=>block.id);
-    for(let page=50;page<=61;page++)assert.ok(shacharit.includes(String(page)),`Shacharit page ${page}`);
-
-    const mincha=composePrayer('mincha',at(date,'mincha')).map(block=>block.id);
-    for(let page=96;page<=103;page++)assert.ok(mincha.includes(String(page)),`Mincha page ${page}`);
-
-    const maariv=composePrayer('maariv',at(date,'maariv')).map(block=>block.id);
-    if(maariv.length)for(let page=106;page<=118;page++)assert.ok(maariv.includes(String(page)),`Maariv page ${page}`);
-
-    const birkat=composePrayer('birkat',at(date)).map(block=>block.id);
-    for(let page=88;page<=94;page++)assert.ok(birkat.includes(String(page)),`Birkat Hamazon page ${page}`);
+test('additional psalms use the pages on which they begin and end',()=>{
+  const expected={gedaliaTevet:['240'],chanukah:['240','241'],esther:['241','242'],tamuz:['242','243'],afterYomKippur:[]};
+  const seen=new Set();
+  for(const plan of weekdaysOfYear()){
+    const list=composePrayer('shacharit',plan).map(block=>block.id);
+    const extra=list.slice(list.indexOf('239')+1,list.indexOf('244'));
+    assert.deepEqual(extra,plan.extraPsalm?expected[plan.extraPsalm]:[],plan.dateText);
+    if(plan.extraPsalm)seen.add(plan.extraPsalm);
   }
+  assert.deepEqual([...seen].sort(),Object.keys(expected).sort());
 });
-
-

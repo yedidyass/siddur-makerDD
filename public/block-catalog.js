@@ -1,98 +1,107 @@
 import {page,group,ref,when,choose} from './block-engine.js';
 
+// Source: הסדור המפורש "כוונת הלב", נוסח ספרדים ועדות המזרח.
+// Page IDs are the printed page numbers, which equal the PDF page numbers.
 const range=(a,b)=>Array.from({length:b-a+1},(_,i)=>String(a+i));
 const pages=ids=>ids.map(id=>ref(`page:${id}`));
-const numeric=[...range(6,86),...range(88,94),...range(96,118)];
-const fullSourcePages=[...range(246,249),...range(257,265),...range(327,335),...range(341,343)].map(id=>`extra-${id}`);
-const assets=[...numeric,...fullSourcePages,...range(1,5).map(id=>`hallel-${id}`)];
+export const sourcePages=[...range(29,42),...range(69,250)];
 
-export const blockCatalog=Object.fromEntries(assets.map(id=>[`page:${id}`,page(id)]));
+export const blockCatalog=Object.fromEntries(sourcePages.map(id=>[`page:${id}`,page(id)]));
 const define=(id,title,children)=>{blockCatalog[id]=group(id,title,children);};
 
-define('morning-blessings','ברכות השחר',pages(range(6,11)));
-define('morning-introduction','תפילת השחר',pages(range(12,17)));
-define('morning-korbanot','קרבנות',pages(range(18,26)));
-define('pesukei-dezimra','פסוקי דזמרה',pages(range(27,40)));
-define('shema-blessings','ברכות קריאת שמע',pages(range(41,49)));
-// Page 61 completes the Amidah (including עושה שלום). It must never be conditional.
-define('morning-amidah','שמונה עשרה',pages(range(50,61)));
-define('morning-opening','פתיחת שחרית עד העמידה',[
-  ...['morning-blessings','morning-introduction','morning-korbanot','pesukei-dezimra','shema-blessings','morning-amidah'].map(ref)
+// Morning blessings through מודעה וגלוי דעת (said every day, page 40).
+define('birchot-hashachar','ברכות השחר',pages(range(29,42)));
+// Page 69 opens with the last lines of פתיחת אליהו, then אדון עולם.
+define('adon-olam','אדון עולם',pages(range(69,70)));
+define('tzitzit-tefillin','ציצית ותפילין',pages(range(71,74)));
+define('to-synagogue','ההליכה לבית הכנסת ותפילת חנה',pages(range(75,77)));
+define('morning-preparation','הכנה לתפילה',[
+  ...['adon-olam','tzitzit-tefillin','to-synagogue'].map(ref)
 ]);
 
-define('after-amidah','סיום העמידה ותחנון',[
+define('akeda','פרשת העקדה',pages(range(78,90)));
+define('korbanot','פרשת הקרבנות',pages(range(91,103)));
+// Pages 104-108 end with קדיש על ישראל, before הודו.
+define('rabbi-yishmael','ברייתא דרבי ישמעאל וקדיש',pages(range(104,108)));
+define('hodu','הודו',pages(range(109,114)));
+define('aromimcha','ארוממך',pages(range(115,116)));
+define('lamnatzeach-menorah','למנצח בנגינות',pages(range(117,119)));
+define('baruch-sheamar','ברוך שאמר',pages(range(120,121)));
+define('pesukei-dezimra','פסוקי דזמרה',pages(range(122,143)));
+define('shema-blessings','קריאת שמע וברכותיה',pages(range(144,163)));
+// Page 193 completes the Amidah (עושה שלום and יהי רצון). It is never conditional.
+define('amidah','תפילת שמונה עשרה',pages(range(164,193)));
+define('shacharit-opening','שחרית עד העמידה',[
+  ...['akeda','korbanot','rabbi-yishmael','hodu','aromimcha','lamnatzeach-menorah',
+    'baruch-sheamar','pesukei-dezimra','shema-blessings','amidah'].map(ref)
+]);
+
+// Page 194 opens with the note on חזרת הש״ץ, then אבינו מלכנו of the Ten Days.
+define('avinu-malkenu','אבינו מלכנו',pages(range(194,195)));
+// Page 196 ends אבינו מלכנו, prints יהי שם for days without Tachanun and opens
+// סדר תחנון. Every reader of Shacharit needs one of these, so it is always shown.
+define('after-amidah','אחר חזרת הש״ץ',[
+  when('avinuMalkenu',ref('avinu-malkenu')),
+  ref('page:196')
+]);
+// Page 205 ends the daily Tachanun and opens the Monday/Thursday additions.
+define('tachanun','סדר תחנון',pages(range(197,205)));
+// Page 214 ends the Monday/Thursday additions and opens the half Kaddish
+// that precedes הוצאת ספר תורה.
+define('tachanun-monday-thursday','תחנונים לשני וחמישי',pages(range(206,214)));
+define('tachanun-section','תחנון',[
   when({not:'noTachanun'},[
-    ref('page:62'),when('longTachanun',pages(range(63,70)))
+    ref('tachanun'),
+    when('longTachanun',ref('tachanun-monday-thursday'))
   ])
 ]);
+define('torah-service','הוצאת ספר תורה',[
+  when('torahReading',[
+    when({not:'longTachanun'},ref('page:214')),
+    ...pages(range(215,216))
+  ])
+]);
+// Page 217: ברכות התורה, then the half Kaddish that every service needs.
+define('torah-blessings-kaddish','ברכות התורה וחצי קדיש',[ref('page:217')]);
 
-define('hallel','הלל',[
-  ...pages(range(1,5).map(id=>`hallel-${id}`))
-]);
-define('hoshanot-rabbah','הושענות להושענא רבה',pages(range(327,335).map(id=>`extra-${id}`)));
-define('hoshanot-daily','הושענות היום',[
-  ...pages(range(327,328).map(id=>`extra-${id}`))
-]);
-define('hoshanot','הושענות',[
-  when({field:'h.day',eq:21},ref('hoshanot-rabbah'),ref('hoshanot-daily'))
-]);
-define('musaf-rosh-chodesh','מוסף ראש חודש',pages(range(246,249).map(id=>`extra-${id}`)));
-define('musaf-festival','מוסף חול המועד',pages(range(257,265).map(id=>`extra-${id}`)));
-define('musaf','מוסף',[
-  choose('musaf',{roshChodesh:ref('musaf-rosh-chodesh'),festival:ref('musaf-festival')})
-]);
-define('omer','ספירת העומר',[
-  ...pages(range(341,343).map(id=>`extra-${id}`))
-]);
+define('ashrei','אשרי',pages(range(218,219)));
+// Page 220 ends אשרי; למנצח (Ps. 20) follows on the same page.
+define('lamnatzeach','למנצח',[ref('page:220')]);
+define('uva-letzion','ובא לציון',pages(range(221,226)));
+// Page 227 is only תפלה לדוד, omitted on days without Tachanun (instruction on page 227).
+define('tefilla-ledavid','תפלה לדוד',[when({not:'noTachanun'},ref('page:227'))]);
+define('beit-yaakov','בית יעקב ושיר המעלות',pages(range(228,229)));
 
-// The scanned Siddur prints several daily psalms on the same source pages.
-// Keep complete pages and use the minimum span containing today's psalm.
-define('song-sun','שיר של יום ראשון',pages(['76','77']));
-define('song-mon','שיר של יום שני',pages(['77']));
-define('song-tue','שיר של יום שלישי',pages(['77']));
-define('song-wed','שיר של יום רביעי',pages(['78']));
-define('song-thu','שיר של יום חמישי',pages(['78','79']));
-define('song-fri','שיר של יום שישי',pages(['79']));
-define('rosh-chodesh-psalm','מזמור ראש חודש',pages(['79','80','81']));
-define('ledavid','לדוד ה׳ אורי',pages(['81']));
-define('daily-song','שיר של יום',[
+// Each weekday psalm uses the smallest span of complete pages containing it.
+define('song-sun','שיר של יום ראשון',pages(['230','231']));
+define('song-mon','שיר של יום שני',pages(['231','232','233']));
+define('song-tue','שיר של יום שלישי',pages(['233','234']));
+define('song-wed','שיר של יום רביעי',pages(['234','235','236']));
+define('song-thu','שיר של יום חמישי',pages(['236','237']));
+// The Friday psalm begins at the foot of page 237 and ends on page 238, which
+// always follows as part of הושיענו.
+define('song-fri','שיר של יום שישי',pages(['237']));
+define('song-of-day','שיר של יום',[
   choose('h.weekday',Object.fromEntries(['Sun','Mon','Tue','Wed','Thu','Fri'].map(day=>[day,ref(`song-${day.toLowerCase()}`)])))
 ]);
-define('song-of-day','מזמורי היום',[
-  ref('daily-song'),
-  when('roshChodesh',ref('rosh-chodesh-psalm')),
-  when('ledavid',ref('ledavid'))
+// Page 238 ends the Friday psalm and prints הושיענו; page 239 ends it and opens
+// the additional psalms (למחרת יום כיפור on page 239 itself).
+define('hoshienu','הושיענו',pages(['238','239']));
+define('extra-psalm','מזמור נוסף',[
+  choose('extraPsalm',{
+    gedaliaTevet:pages(['240']),
+    chanukah:pages(['240','241']),
+    esther:pages(['241','242']),
+    tamuz:pages(['242','243'])
+  })
 ]);
+// Page 244 ends the mourners' psalm and holds קדיש יהא שלמא, so it is always shown.
+define('kaddish-ein-kelokeinu','קדיש, קוה ואין כאלהינו',pages(range(244,245)));
+define('ketoret','פרשת הקטורת',pages(range(246,249)));
+// The scan ends at page 250, before קדיש על ישראל and עלינו (review/open-questions.md).
+define('tana-devei-eliyahu','תנא דבי אליהו',[ref('page:250')]);
 
-define('ashrei-uva','אשרי ובא לציון',[
-  ...pages(range(71,76))
+define('shacharit-ending','סיום שחרית',[
+  ...['ashrei','lamnatzeach','uva-letzion','tefilla-ledavid','beit-yaakov','song-of-day',
+    'hoshienu','extra-psalm','kaddish-ein-kelokeinu','ketoret','tana-devei-eliyahu'].map(ref)
 ]);
-define('weekday-ashrei-uva','אשרי ובא לציון',[ref('ashrei-uva')]);
-define('weekday-psalms','שיר של יום ומזמורים',[
-  ref('daily-song'),
-  when('roshChodesh',ref('rosh-chodesh-psalm'),ref('page:81'))
-]);
-define('closing','סיום התפילה',pages(range(82,86)));
-
-// In a Musaf service the daily psalm and Psalm 27 precede Torah reading;
-// Ashrei/Uva Letzion then precede Musaf. Page 81 is repeated after Musaf because
-// its lower part begins Ein Kelokeinu, and full-page display is mandatory.
-define('musaf-morning-ending','סדר יום שיש בו מוסף',[
-  ref('song-of-day'),ref('ashrei-uva'),ref('musaf'),ref('page:81'),ref('closing')
-]);
-define('weekday-morning-ending','סיום שחרית של חול',[
-  ref('weekday-ashrei-uva'),ref('weekday-psalms'),ref('closing')
-]);
-
-define('mincha-korbanot','קרבנות מנחה',[
-  ...pages(range(19,22))
-]);
-define('mincha-ashrei-amidah','אשרי ושמונה עשרה',pages(range(96,102)));
-define('mincha-ending','סיום מנחה',[
-  when('noTachanun',[
-    ...pages(['103','105','106'])
-  ],pages(range(103,106)))
-]);
-define('maariv-weekday','ערבית של חול',pages(range(106,118)));
-define('birkat-hamazon','ברכת המזון',pages(range(88,94)));
-

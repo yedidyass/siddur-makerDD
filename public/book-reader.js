@@ -1,4 +1,4 @@
-import {PageFlip} from './vendor/page-flip.module.js?v=38';
+import {PageFlip} from './vendor/page-flip.module.js?v=40';
 
 const clamp=(n,min,max)=>Math.max(min,Math.min(max,n));
 export const shouldComplete=(progress,velocity,distance)=>progress>=.38||(distance>28&&velocity>.35);

@@ -3,7 +3,7 @@ import {createServer} from 'node:http';
 import {readFile} from 'node:fs/promises';
 import {join,extname} from 'node:path';
 
-async function open(page,start='6',url='/'){
+async function open(page,start='29',url='/'){
   await page.goto(url);
   await page.locator('[data-card="shacharit"] .primary').click();
   await page.locator(`[data-prayer="shacharit"][data-start="${start}"]`).click();
@@ -59,13 +59,13 @@ test('short drag cancels; fast flick advances exactly one page; boundaries hold'
 });
 
 test('zoom does not turn pages; exit and reopen repeatedly; resize keeps page',async({page},info)=>{
-  await open(page,'45');const start=await current(page);
+  await open(page,'144');const start=await current(page);
   await page.keyboard.press('+');await drag(page,.2,.8);expect(await current(page)).toBe(start);
   await page.keyboard.press('0');
   await page.keyboard.press('ArrowRight');await page.waitForTimeout(650);expect(await current(page)).toBe(start+1);
   for(let n=0;n<4;n++){
     await page.keyboard.press('Escape');await expect(page.locator('#reader')).toBeHidden();
-    await page.locator('[data-prayer="shacharit"][data-start="45"]').click();
+    await page.locator('[data-prayer="shacharit"][data-start="144"]').click();
     await expect(page.locator('#loading')).toBeHidden();
     await expect(page.locator('#flipbook')).toHaveCount(1);expect(await current(page)).toBe(start);
   }
@@ -91,7 +91,7 @@ test('real touch swipe, pinch interrupts fold, later swipe still works',async({p
 
 test('missing next image keeps current leaf, recovery succeeds',async({page})=>{
   let blocked=true;
-  await page.route('**/pages/page-007.jpg',route=>blocked?route.abort():route.continue());
+  await page.route('**/pages/page-030.png',route=>blocked?route.abort():route.continue());
   await open(page);await drag(page,.1,.9);expect(await current(page)).toBe(0);
   blocked=false;await drag(page,.1,.9);await expect(page.locator('#flipbook')).toHaveAttribute('data-page','1');
 });
@@ -104,9 +104,9 @@ test('closing stops renderer frames; reopening during decoding cannot blank read
   await open(page);await page.keyboard.press('Escape');await page.waitForTimeout(100);
   const before=await page.evaluate(()=>window.__readerFrames);await page.waitForTimeout(200);
   expect(await page.evaluate(()=>window.__readerFrames)).toBe(before);
-  await page.locator('[data-prayer="shacharit"][data-start="45"]').click();
+  await page.locator('[data-prayer="shacharit"][data-start="144"]').click();
   await page.keyboard.press('Escape');
-  await page.locator('[data-prayer="shacharit"][data-start="6"]').click();
+  await page.locator('[data-prayer="shacharit"][data-start="29"]').click();
   await expect(page.locator('#flipbook')).toHaveAttribute('data-page','0');
   await expect(page.locator('#loading')).toBeHidden();await drag(page,.1,.9);await expect(page.locator('#flipbook')).toHaveAttribute('data-page','1');
 });
@@ -128,13 +128,13 @@ test('cached reader and page turn work with origin server stopped',async({browse
   const context=await browser.newContext({viewport:{width:390,height:844},serviceWorkers:'allow'});
   try{
     const page=await context.newPage();await page.clock.setFixedTime(new Date('2026-10-07T09:00:00Z'));
-    await open(page,'6',url);
+    await open(page,'29',url);
     await page.evaluate(async()=>{
       await navigator.serviceWorker.ready;
       if(!navigator.serviceWorker.controller)await new Promise(resolve=>navigator.serviceWorker.addEventListener('controllerchange',resolve,{once:true}));
     });
     await new Promise(resolve=>{server.close(resolve);server.closeAllConnections();});
-    await open(page,'6',url);await drag(page,.1,.9);
+    await open(page,'29',url);await drag(page,.1,.9);
     await expect(page.locator('#flipbook')).toHaveAttribute('data-page','1');
   }finally{await context.close();server.close();server.closeAllConnections();}
 });
